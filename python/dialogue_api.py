@@ -1,4 +1,9 @@
-"""Conversation contract backed exclusively by the project's own checkpoint."""
+"""Conversation contract backed by local generators only.
+
+The generators are the project's own checkpoint and, when configured, a local
+open-weights core (``language_core``) running on this machine. Remote or cloud
+generators are rejected by design.
+"""
 
 from __future__ import annotations
 
@@ -114,19 +119,21 @@ def _recent_messages(messages: list[dict[str, str]]) -> list[dict[str, str]]:
 
 
 class DialogueAPI:
-    """Build a bounded conversational turn for the project's neural checkpoint."""
+    """Build a bounded conversational turn for the configured local generators."""
 
-    def __init__(self, environ=None, local_provider=None):
+    def __init__(self, environ=None, local_provider=None, core_provider=None):
         # Provider selection is intentionally not environment-configurable:
-        # every generated answer comes from this project's own checkpoint.
+        # generated answers come only from providers wired in by the host
+        # process (the project's own checkpoint and, optionally, a local core).
         del environ
         self.local = local_provider
+        self.core = core_provider
         self.mode = "own-checkpoint"
 
     def providers_status(self) -> dict:
-        return {
+        status = {
             "schema": "agent-dialogue-providers/v1",
-            "mode": self.mode,
+            "mode": "local" if self.core is not None else self.mode,
             "provider_order": self._provider_names(self.mode),
             "own_checkpoint": {
                 "id": "project-neural-checkpoint",
@@ -134,6 +141,13 @@ class DialogueAPI:
                 "checkpoint": getattr(self.local, "model", None) or None,
             },
         }
+        if self.core is not None:
+            describe = getattr(self.core, "status", None)
+            status["local_core"] = describe() if callable(describe) else {
+                "id": getattr(self.core, "name", "local-core"),
+                "configured": bool(getattr(self.core, "configured", False)),
+            }
+        return status
 
     @staticmethod
     def validate_request(body: object) -> dict:
@@ -193,8 +207,8 @@ class DialogueAPI:
 
         provider = body.get("provider")
         if provider is not None and (not isinstance(provider, str)
-                                     or provider not in {"local", "own-checkpoint"}):
-            raise DialogueAPIError("somente o checkpoint próprio pode gerar respostas")
+                                     or provider not in {"local", "own-checkpoint", "local-core"}):
+            raise DialogueAPIError("somente geradores locais são aceitos: local, own-checkpoint ou local-core")
         return {
             "request_id": request_id.strip() if isinstance(request_id, str) and request_id.strip() else uuid.uuid4().hex,
             "messages": normalized_messages,
@@ -202,9 +216,16 @@ class DialogueAPI:
             "provider": provider,
         }
 
-    def _provider_chain(self, mode: str) -> list:
+    def _provider_chain(self, mode: str, requested: str | None = None) -> list:
+        """Ordered generators: the local core first, the own checkpoint as reserve."""
         del mode
-        return [self.local] if getattr(self.local, "configured", False) else []
+        core = [self.core] if getattr(self.core, "configured", False) else []
+        own = [self.local] if getattr(self.local, "configured", False) else []
+        if requested == "own-checkpoint":
+            return own
+        if requested == "local-core":
+            return core
+        return core + own
 
     def _provider_names(self, mode: str) -> list[str]:
         return [provider.name for provider in self._provider_chain(mode)]
@@ -251,13 +272,23 @@ class DialogueAPI:
         question = next(item["content"] for item in reversed(request["messages"])
                         if item["role"] == "user" and item["content"].strip())
         mode = self.mode
-        chain = self._provider_chain(mode)
+        chain = self._provider_chain(mode, request["provider"])
         attempts = []
         prepared_messages = self._prepare_messages(request["messages"], request["evidence"], system_context)
+        streamed = []
+
+        def forward(fragment):
+            streamed.append(True)
+            on_delta(fragment)
+
         for provider in chain:
+            if streamed:
+                # A draft already reached the client; a second provider would
+                # append its text to it. Stop and let the caller's fallbacks answer.
+                break
             try:
                 stream = getattr(provider, "complete_stream", None)
-                answer = stream(prepared_messages, on_delta) if on_delta and callable(stream) else provider.complete(prepared_messages)
+                answer = stream(prepared_messages, forward) if on_delta and callable(stream) else provider.complete(prepared_messages)
             except (DialogueProviderError, OSError, TimeoutError) as error:
                 attempts.append({"provider": provider.name, "status": "unavailable", "reason": str(error)[:160]})
                 continue
@@ -265,9 +296,14 @@ class DialogueAPI:
             if not answer:
                 attempts.append({"provider": provider.name, "status": "empty"})
                 continue
-            if validate_candidate is not None:
+            # A capable model brings its own gate (safety and degeneration only):
+            # the caller's gate was calibrated for the tiny checkpoint, and its
+            # lexical-relevance rule rejects correct answers to follow-ups.
+            own_gate = getattr(provider, "answer_gate", None)
+            validator = own_gate if callable(own_gate) else validate_candidate
+            if validator is not None:
                 try:
-                    accepted, reason = validate_candidate(answer)
+                    accepted, reason = validator(answer)
                 except Exception:
                     accepted, reason = False, "quality_check_error"
                 if not accepted:
@@ -292,13 +328,14 @@ class DialogueAPI:
                 "generation": {
                     "provider": provider.name,
                     "model": getattr(provider, "model", None),
-                    "quality_gate_result": "accepted" if validate_candidate else "not_configured",
+                    "quality_gate_result": "accepted" if validator else "not_configured",
                     "fallback_used": len(attempts) > 1,
                     "attempts": attempts,
                 },
             }
         code = "provider_unavailable" if not chain else "quality_gate_rejected"
-        error = "checkpoint neural próprio indisponível" if not chain else "a resposta do checkpoint próprio não passou pela validação"
+        generator = "checkpoint neural próprio" if self.core is None else "gerador local"
+        error = f"{generator} indisponível" if not chain else f"a resposta do {generator} não passou pela validação"
         return {
             "schema": RESPONSE_SCHEMA,
             "ok": False,

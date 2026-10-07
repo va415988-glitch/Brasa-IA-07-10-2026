@@ -39,6 +39,12 @@ load_local_env() {
 
     case "$key" in
       IA_LOCAL_BRAVE_SEARCH_API_KEY|IA_LOCAL_BRAVE_ALLOW_STORAGE) ;;
+      # Núcleo de linguagem local (ver Documentacoes/NUCLEO_LINGUAGEM_LOCAL.md).
+      # IA_LOCAL_CORE_ARGS fica de fora de propósito: argumentos livres para um
+      # binário só valem vindos do ambiente do processo, nunca de um arquivo.
+      IA_LOCAL_CORE_MODEL|IA_LOCAL_CORE_MMPROJ|IA_LOCAL_CORE_BIN|IA_LOCAL_CORE_URL) ;;
+      IA_LOCAL_CORE_PORT|IA_LOCAL_CORE_CTX|IA_LOCAL_CORE_THREADS|IA_LOCAL_CORE_MAX_TOKENS) ;;
+      IA_LOCAL_CORE_HISTORY_CHARS|IA_LOCAL_CORE_TEMPERATURE|IA_LOCAL_CORE_TIMEOUT) ;;
       *) continue ;;
     esac
 
@@ -58,8 +64,10 @@ load_local_env() {
 
 load_local_env
 
-# A inferência diária usa o checkpoint neural desenvolvido pelo projeto.
-# Configurações antigas do Colab não ativam provedores externos neste iniciador.
+# A inferência diária usa o checkpoint neural desenvolvido pelo projeto e, quando
+# IA_LOCAL_CORE_MODEL ou IA_LOCAL_CORE_URL está definido, um núcleo de linguagem
+# local de pesos abertos (somente loopback). Provedores remotos continuam fora:
+# configurações antigas do Colab não ativam nada externo neste iniciador.
 unset BRASA_COLAB_URL BRASA_COLAB_TOKEN
 
 if ! command -v cargo >/dev/null 2>&1; then

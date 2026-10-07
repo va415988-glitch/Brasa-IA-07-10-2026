@@ -9,6 +9,7 @@ from dialogue_api import (
     CheckpointProvider,
     DialogueAPI,
     DialogueAPIError,
+    DialogueProviderError,
     REQUEST_SCHEMA,
 )
 
@@ -180,6 +181,119 @@ class DialogueApiTests(unittest.TestCase):
         ):
             with self.subTest(body=body), self.assertRaises(DialogueAPIError):
                 api.turn(body)
+
+
+class FakeCore(FakeProvider):
+    """Núcleo local: traz o próprio portão de resposta (segurança e degeneração)."""
+
+    def __init__(self, answer, gate=None, streams=False):
+        super().__init__('local-core', 'gemma.gguf', answer)
+        self.gate = gate
+        self.streams = streams
+
+    def answer_gate(self, answer):
+        return self.gate(answer) if self.gate else (True, 'accepted')
+
+    def complete_stream(self, messages, on_delta):
+        self.calls.append(messages)
+        on_delta('rascunho do núcleo ')
+        return self.answer
+
+
+class DialogueApiLocalCoreTests(unittest.TestCase):
+    def messages(self):
+        return [{'role': 'user', 'content': 'Web, com login.'}]
+
+    def test_core_answers_first_and_the_checkpoint_stays_as_reserve(self):
+        core = FakeCore('Resposta do núcleo.')
+        own = FakeProvider('project-neural-checkpoint', 'model/own.safetensors', 'Resposta do checkpoint.')
+        api = DialogueAPI(local_provider=own, core_provider=core)
+        result = api.turn(request(self.messages()))
+        self.assertTrue(result['ok'])
+        self.assertEqual(result['backend'], 'dialogue-local-core')
+        self.assertEqual(own.calls, [])
+        status = api.providers_status()
+        self.assertEqual(status['provider_order'], ['local-core', 'project-neural-checkpoint'])
+        self.assertEqual(status['mode'], 'local')
+        self.assertEqual(status['local_core']['id'], 'local-core')
+
+    def test_without_a_core_the_status_is_unchanged(self):
+        status = DialogueAPI(local_provider=FakeProvider('project-neural-checkpoint', 'm', 'ok')).providers_status()
+        self.assertEqual(status['mode'], 'own-checkpoint')
+        self.assertNotIn('local_core', status)
+
+    def test_unavailable_core_falls_back_to_the_checkpoint(self):
+        core = FakeCore(DialogueProviderError('servidor fora do ar'))
+        own = FakeProvider('project-neural-checkpoint', 'model/own.safetensors', 'Resposta do checkpoint.')
+        result = DialogueAPI(local_provider=own, core_provider=core).turn(request(self.messages()))
+        self.assertTrue(result['ok'])
+        self.assertEqual(result['backend'], 'dialogue-project-neural-checkpoint')
+        self.assertTrue(result['generation']['fallback_used'])
+        self.assertEqual([item['status'] for item in result['generation']['attempts']], ['unavailable', 'accepted'])
+
+    def test_core_that_is_not_configured_is_skipped(self):
+        core = FakeCore('nunca usada')
+        core.configured = False
+        own = FakeProvider('project-neural-checkpoint', 'model/own.safetensors', 'Resposta do checkpoint.')
+        api = DialogueAPI(local_provider=own, core_provider=core)
+        self.assertEqual(api.providers_status()['provider_order'], ['project-neural-checkpoint'])
+        self.assertEqual(api.turn(request(self.messages()))['backend'], 'dialogue-project-neural-checkpoint')
+        self.assertEqual(core.calls, [])
+
+    def test_request_can_pick_one_local_generator(self):
+        core = FakeCore('Resposta do núcleo.')
+        own = FakeProvider('project-neural-checkpoint', 'model/own.safetensors', 'Resposta do checkpoint.')
+        api = DialogueAPI(local_provider=own, core_provider=core)
+        self.assertEqual(api.turn(request(self.messages(), provider='local-core'))['backend'], 'dialogue-local-core')
+        self.assertEqual(api.turn(request(self.messages(), provider='own-checkpoint'))['backend'],
+                         'dialogue-project-neural-checkpoint')
+        self.assertEqual(api.turn(request(self.messages(), provider='local'))['backend'], 'dialogue-local-core')
+        only_own = DialogueAPI(local_provider=own)
+        result = only_own.turn(request(self.messages(), provider='local-core'))
+        self.assertFalse(result['ok'])
+        self.assertEqual(result['error_code'], 'provider_unavailable')
+
+    def test_remote_generators_stay_rejected(self):
+        api = DialogueAPI(core_provider=FakeCore('x'))
+        for provider in ('external', 'auto', 'openai', 'ollama'):
+            with self.subTest(provider=provider), self.assertRaises(DialogueAPIError):
+                api.turn(request(self.messages(), provider=provider))
+
+    def test_core_uses_its_own_gate_instead_of_the_callers_relevance_gate(self):
+        rejecting = lambda answer: (False, 'not-relevant')
+        core = FakeCore('Perfeito! Vou planejar um app para a web com autenticação.')
+        accepted = DialogueAPI(core_provider=core).turn(request(self.messages()), validate_candidate=rejecting)
+        self.assertTrue(accepted['ok'])
+        own = FakeProvider('project-neural-checkpoint', 'm', 'Perfeito! Vou planejar um app para a web.')
+        rejected = DialogueAPI(local_provider=own).turn(request(self.messages()), validate_candidate=rejecting)
+        self.assertFalse(rejected['ok'])
+        self.assertEqual(rejected['error_code'], 'quality_gate_rejected')
+
+    def test_rejected_core_without_streaming_falls_back_to_the_checkpoint(self):
+        core = FakeCore('lixo', gate=lambda answer: (False, 'repetition-loop'))
+        own = FakeProvider('project-neural-checkpoint', 'model/own.safetensors', 'Resposta do checkpoint.')
+        result = DialogueAPI(local_provider=own, core_provider=core).turn(request(self.messages()))
+        self.assertTrue(result['ok'])
+        self.assertEqual([item['status'] for item in result['generation']['attempts']], ['rejected', 'accepted'])
+
+    def test_a_streamed_draft_is_never_mixed_with_the_reserves_text(self):
+        core = FakeCore('lixo', gate=lambda answer: (False, 'repetition-loop'))
+        own = FakeStreamingProvider('project-neural-checkpoint', 'model/own.safetensors', 'Resposta em partes.')
+        fragments = []
+        result = DialogueAPI(local_provider=own, core_provider=core).turn(
+            request(self.messages()), on_delta=fragments.append)
+        self.assertFalse(result['ok'])
+        self.assertEqual(result['error_code'], 'quality_gate_rejected')
+        self.assertEqual(fragments, ['rascunho do núcleo '])
+        self.assertEqual(own.calls, [])
+
+    def test_error_wording_names_the_generator_that_is_in_use(self):
+        legacy = DialogueAPI().turn(request(self.messages()))
+        self.assertEqual(legacy['error'], 'checkpoint neural próprio indisponível')
+        core = FakeCore('x')
+        core.configured = False
+        modern = DialogueAPI(core_provider=core).turn(request(self.messages()))
+        self.assertEqual(modern['error'], 'gerador local indisponível')
 
 
 if __name__ == '__main__':

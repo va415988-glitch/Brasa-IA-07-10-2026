@@ -816,6 +816,7 @@ from proactive_implementation import implementation_prompt, parse_implementation
 from example_programming import parse_example_program, implementation_from_examples, one_edit_repair
 from dialogue_api import (CheckpointProvider, DialogueAPI, DialogueAPIError,
                           REQUEST_SCHEMA as DIALOGUE_REQUEST_SCHEMA)
+from language_core import local_core_from_environment
 from implementation_recipes import fallback_implementation_plan
 from build_research import build_research_queries, research_evidence, should_research_build
 from agent_planner import AgentPlanner
@@ -1098,7 +1099,8 @@ def workspace_change_report(results):
 class ModelService:
     def __init__(self, checkpoint_path, trace_path: Path | str | None = DEFAULT_TRACE_PATH,
                  cognitive_router_manifest: Path | None = COGNITIVE_ROUTER_CONFIG,
-                 experimental_model_manifest: Path | None = EXPERIMENTAL_MODEL_CONFIG):
+                 experimental_model_manifest: Path | None = EXPERIMENTAL_MODEL_CONFIG,
+                 core_provider=None):
         self.cognitive_router_manifest = cognitive_router_manifest
         self._cognitive_router_cache = None
         self._cognitive_router_stamp = None
@@ -1119,7 +1121,7 @@ class ModelService:
             self.local_reply,
             checkpoint=self.checkpoint_path,
             is_ready=lambda: self.local_model is not None and self.local_tokenizer is not None,
-        ))
+        ), core_provider=core_provider)
         self.memory = []
         self.conversation_turn = 0
         self.knowledge_index = None
@@ -7075,7 +7077,10 @@ def main():
     parser.add_argument("--trace", default=os.environ.get("IA_AGENT_TRACE_PATH", str(DEFAULT_TRACE_PATH)))
     parser.add_argument("--runs-db", default=os.environ.get("IA_AGENT_RUNS_DB", str(ROOT / 'logs' / 'agent-runs.sqlite3')))
     args = parser.parse_args()
-    SERVICE = ModelService(args.checkpoint, trace_path=args.trace)
+    # Núcleo de linguagem local (pesos abertos): desligado a menos que IA_LOCAL_CORE_* esteja definido.
+    # O checkpoint próprio continua como reserva na cadeia do DialogueAPI.
+    core = local_core_from_environment()
+    SERVICE = ModelService(args.checkpoint, trace_path=args.trace, core_provider=core)
     if SERVICE.local_model is not None and SERVICE.local_tokenizer is not None and not SERVICE.local_model_error:
         # Warm the shared proof cache before accepting requests, so readiness
         # and the first laboratory GET never initiate a slow regrading pass.
