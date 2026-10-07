@@ -102,9 +102,11 @@ ainda não são transcritos ou analisados.
 Para dar mais tempo ao modelo em perguntas difíceis, o chat aceita até
 15 minutos na interface e na ligação com o worker. Conversa, respostas de
 código e propostas de implementação usam o checkpoint próprio e o tokenizer
-local. O Ollama e endpoints compatíveis não participam da geração. Propostas de
-alteração continuam sujeitas a validação de caminhos, aprovação de escrita e
-verificação.
+local. O Ollama e serviços remotos não participam da geração. Opcionalmente, um
+[núcleo de linguagem local de pesos abertos](NUCLEO_LINGUAGEM_LOCAL.md) (modelo
+rodando nesta máquina, em loopback) passa a gerar a conversa e o checkpoint
+próprio vira reserva. Propostas de alteração continuam sujeitas a validação de
+caminhos, aprovação de escrita e verificação.
 A interface mostra etapas observáveis da operação, não o raciocínio interno do
 modelo. Respostas simples da memória local continuam disponíveis como fallback
 quando a geração própria reprova no controle de qualidade.
@@ -240,8 +242,9 @@ foram realmente abertas. Para preparar o acervo local, acrescente
 para que pesquisa não altere o conhecimento usado pelo modelo sem revisão.
 
 O chat também expõe `POST /api/v1/dialogue/turn` e
-`GET /api/v1/dialogue/providers`. A camada usa exclusivamente o checkpoint
-neural próprio. O contrato, os limites do contexto e a configuração opcional da
+`GET /api/v1/dialogue/providers`. A camada usa geradores locais: o checkpoint
+neural próprio e, se configurado, o núcleo local de pesos abertos. O contrato,
+os limites do contexto e a configuração opcional da
 API de busca web estão em
 [`API_DIALOGO_HIBRIDA.md`](API_DIALOGO_HIBRIDA.md).
 

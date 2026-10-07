@@ -2,17 +2,24 @@
 
 ## Objetivo
 
-`agent-dialogue/v1` prepara histórico e evidências, chama o checkpoint neural
-treinado neste projeto e valida a resposta. O runtime não encaminha conversas a
-Ollama, OpenAI-compatible ou outro modelo gerador. A web é uma fonte opcional de
-evidências; quem escreve a resposta continua sendo o checkpoint próprio.
+`agent-dialogue/v1` prepara histórico e evidências, chama um gerador local e
+valida a resposta. Os geradores locais são o checkpoint neural treinado neste
+projeto e, quando configurado, o
+[núcleo de linguagem local de pesos abertos](NUCLEO_LINGUAGEM_LOCAL.md), um
+modelo que roda nesta máquina (`llama-server` em loopback). O runtime não
+encaminha conversas a Ollama, a serviços remotos nem a qualquer endpoint fora
+da máquina. A web é uma fonte opcional de evidências; quem escreve a resposta é
+sempre um gerador local.
 
 ## Rotas
 
 ### `GET /api/v1/dialogue/providers`
 
 Retorna `agent-dialogue-providers/v1`, com `mode: "own-checkpoint"` e o estado
-do checkpoint carregado. Não retorna chaves ou credenciais.
+do checkpoint carregado. Com o núcleo local configurado, `mode` passa a `"local"`
+e a resposta traz um bloco `local_core` (`configured`, `model`, `server`,
+`state`, `managed`); `provider_order` lista a cadeia na ordem de uso. Não
+retorna chaves ou credenciais.
 
 ### `POST /api/v1/dialogue/turn`
 
@@ -33,17 +40,25 @@ Recebe `agent-dialogue-request/v1`:
 }
 ```
 
-`provider` pode ser omitido ou definido como `local`/`own-checkpoint`; os dois
-valores sempre selecionam o checkpoint do projeto. Valores como `external` e
+`provider` pode ser omitido ou definido como `local` (a cadeia: o núcleo local,
+se configurado, e depois o checkpoint próprio), `own-checkpoint` (só o
+checkpoint) ou `local-core` (só o núcleo local). Valores como `external` e
 `auto` são rejeitados. O pedido aceita até 80 mensagens, mas o contexto entregue
-ao gerador mantém no máximo oito mensagens recentes e até oito evidências. Texto
-de páginas externas é dado não confiável, não uma instrução.
+ao gerador mantém no máximo oito mensagens recentes e até oito evidências (o
+núcleo local aplica ainda um orçamento de histórico em caracteres,
+`IA_LOCAL_CORE_HISTORY_CHARS`, porque em CPU ler o prompt é o custo dominante).
+Texto de páginas externas é dado não confiável, não uma instrução.
 
-A resposta `agent-dialogue-response/v1` registra o backend, a identificação do
-checkpoint, o gate de qualidade e as tentativas. Se o checkpoint estiver
-indisponível ou a resposta reprovar, a rota retorna erro; ela não troca para
-outro modelo gerador. Fallbacks de regras que existam no chat principal são
-identificados separadamente e não são apresentados como geração neural.
+A resposta `agent-dialogue-response/v1` registra o backend (`dialogue-local-core`
+ou `dialogue-project-neural-checkpoint`), a identificação do modelo, o gate de
+qualidade e as tentativas. Cada gerador tem o seu gate: o checkpoint usa o gate
+do chamador; o núcleo local usa um gate de segurança e degeneração, sem exigir
+sobreposição lexical com a pergunta (que reprova respostas corretas a
+seguimentos). Se nenhum gerador local estiver disponível ou a resposta reprovar,
+a rota retorna erro; ela não troca para um gerador remoto. Se um rascunho já foi
+transmitido em streaming e reprovou, a cadeia para em vez de misturar textos.
+Fallbacks de regras que existam no chat principal são identificados
+separadamente e não são apresentados como geração neural.
 
 ## Busca web
 

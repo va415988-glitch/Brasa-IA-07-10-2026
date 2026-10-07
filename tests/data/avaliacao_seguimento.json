@@ -1,0 +1,270 @@
+{
+  "suite_id": "dialogue-follow-up-20-v1",
+  "description": "20 conversas novas em que o último pedido só faz sentido com os turnos anteriores. Cada caso exige um termo que existe apenas no contexto anterior (ou que o contexto torna a única resposta correta), então uma resposta genérica ou pronta não passa. Não reaproveita as perguntas da bancada fixa de 50. Termos terminados em * são prefixos; a comparação ignora acentos e maiúsculas.",
+  "notes": "Os critérios são deliberadamente amplos: avaliam se o seguimento foi entendido, não o estilo da resposta. Leia as respostas do relatório; o automático não mede nuance.",
+  "cases": [
+    {
+      "id": "ref-funcao-lista",
+      "kind": "referencia",
+      "messages": [
+        {"role": "user", "content": "Quero uma função em Python que some dois números."},
+        {"role": "assistant", "content": "def soma(a, b):\n    return a + b"},
+        {"role": "user", "content": "Agora faça ela aceitar uma lista de números."}
+      ],
+      "checks": [
+        {"name": "trabalha com lista", "any": ["sum(", "lista*", "for "]},
+        {"name": "continua em Python", "any": ["def ", "return", "python"]}
+      ]
+    },
+    {
+      "id": "ref-panqueca-sem-leite",
+      "kind": "referencia",
+      "messages": [
+        {"role": "user", "content": "Me passa uma receita simples de panqueca."},
+        {"role": "assistant", "content": "Misture 1 xícara de farinha, 1 ovo, 1 xícara de leite e uma pitada de sal, e frite em frigideira untada."},
+        {"role": "user", "content": "Dá pra fazer isso sem leite?"}
+      ],
+      "checks": [
+        {"name": "propõe substituto ou confirma que dá", "any": ["leite vegetal", "agua", "substitu*", "aveia", "soja", "amendoa*", "coco", "sem leite"]},
+        {"name": "fala da panqueca", "any": ["panqueca*", "massa", "receita", "farinha"]}
+      ]
+    },
+    {
+      "id": "ref-indexerror",
+      "kind": "referencia",
+      "messages": [
+        {"role": "user", "content": "Meu script Python dá IndexError ao acessar lista[5]."},
+        {"role": "assistant", "content": "IndexError significa que o índice não existe: nesse momento a lista tem menos de 6 elementos."},
+        {"role": "user", "content": "Mas eu sei que ela tem 10 itens. Por que acontece então?"}
+      ],
+      "checks": [
+        {"name": "explica causas possíveis do índice", "any": ["indice*", "len(", "tamanho", "vazia", "outra lista", "antes", "comeca em 0", "posicao"]},
+        {"name": "fala da lista", "any": ["lista*"]}
+      ]
+    },
+    {
+      "id": "ref-poema-melancolico",
+      "kind": "refinamento",
+      "min_chars": 40,
+      "messages": [
+        {"role": "user", "content": "Escreva um poema curto de quatro versos sobre o mar."},
+        {"role": "assistant", "content": "O mar respira fundo,\nbeija a areia e se vai;\nguarda o sol no seu fundo\ne a manhã não o trai."},
+        {"role": "user", "content": "Agora deixe ele mais melancólico."}
+      ],
+      "checks": [
+        {"name": "mantém o tema do mar", "any": ["mar", "onda*", "mare*", "areia", "horizonte"]}
+      ]
+    },
+    {
+      "id": "ref-email-formal",
+      "kind": "refinamento",
+      "messages": [
+        {"role": "user", "content": "Escreva um e-mail curto pedindo o adiamento da reunião de sexta."},
+        {"role": "assistant", "content": "Oi, pessoal! Podemos adiar a reunião de sexta? Tive um imprevisto. Valeu!"},
+        {"role": "user", "content": "Ficou informal demais. Refaça num tom formal."}
+      ],
+      "checks": [
+        {"name": "tom formal", "any": ["prezad*", "atenciosamente", "cordialmente", "solicito", "gostaria", "senhor*", "venho"]},
+        {"name": "mantém o assunto", "any": ["reuniao", "sexta"]}
+      ]
+    },
+    {
+      "id": "ref-resumo-uma-frase",
+      "kind": "refinamento",
+      "max_chars": 350,
+      "messages": [
+        {"role": "user", "content": "Explique em um parágrafo o que é uma API REST."},
+        {"role": "assistant", "content": "Uma API REST é uma interface que permite que sistemas conversem pela web: cada recurso tem uma URL e os verbos HTTP, como GET e POST, dizem se você quer ler, criar ou alterar esse recurso, normalmente trocando dados em JSON."},
+        {"role": "user", "content": "Resuma isso em uma frase só."}
+      ],
+      "checks": [
+        {"name": "mantém o assunto", "any": ["rest", "api", "http", "recurso*", "interface"]}
+      ]
+    },
+    {
+      "id": "ref-espanhol",
+      "kind": "refinamento",
+      "min_chars": 8,
+      "messages": [
+        {"role": "user", "content": "Como se diz 'bom dia' em inglês?"},
+        {"role": "assistant", "content": "Good morning."},
+        {"role": "user", "content": "E em espanhol?"}
+      ],
+      "checks": [
+        {"name": "traduz a mesma expressão", "any": ["buenos dias"]}
+      ]
+    },
+    {
+      "id": "resp-plataforma-web",
+      "kind": "resposta",
+      "messages": [
+        {"role": "user", "content": "Quero criar um app de controle de gastos."},
+        {"role": "assistant", "content": "Boa ideia! Você prefere começar por uma versão web ou por um aplicativo de celular?"},
+        {"role": "user", "content": "Web, com login."}
+      ],
+      "checks": [
+        {"name": "adota a plataforma web", "any": ["web", "site", "navegador"]},
+        {"name": "trata do login", "any": ["login", "autentica*", "senha*", "entrar", "conta*", "usuario*"]},
+        {"name": "lembra que é de gastos", "any": ["gasto*", "despesa*", "finan*", "controle", "app", "aplicativo"]}
+      ]
+    },
+    {
+      "id": "resp-violao-tempo",
+      "kind": "resposta",
+      "messages": [
+        {"role": "user", "content": "Quero aprender violão."},
+        {"role": "assistant", "content": "Legal! Você já toca algum instrumento ou está começando do zero? E quanto tempo tem para praticar?"},
+        {"role": "user", "content": "Do zero, e só tenho 20 minutos por dia."}
+      ],
+      "checks": [
+        {"name": "respeita o tempo disponível", "any": ["20 minutos", "vinte minutos", "por dia", "diari*"]},
+        {"name": "continua no violão", "any": ["violao", "acorde*", "corda*", "musica*"]}
+      ]
+    },
+    {
+      "id": "resp-presente-orcamento",
+      "kind": "resposta",
+      "messages": [
+        {"role": "user", "content": "Preciso de um presente para minha mãe."},
+        {"role": "assistant", "content": "Que bacana! Qual é o seu orçamento aproximado e do que ela gosta?"},
+        {"role": "user", "content": "Até 150 reais, ela gosta de plantas."}
+      ],
+      "checks": [
+        {"name": "sugere um presente concreto com plantas", "any": ["vaso*", "suculent*", "orquidea*", "samambaia*", "muda*", "jardinagem", "cacto*", "violeta*", "bonsai", "terrario*"]},
+        {"name": "considera o orçamento", "any": ["150", "ate", "orcamento", "reais"]}
+      ]
+    },
+    {
+      "id": "sel-nome-segundo",
+      "kind": "selecao",
+      "messages": [
+        {"role": "user", "content": "Me dê três nomes para um app de tarefas."},
+        {"role": "assistant", "content": "1. Feito\n2. Bora\n3. Passo"},
+        {"role": "user", "content": "Gostei do segundo. Crie um slogan para ele."}
+      ],
+      "checks": [
+        {"name": "usa o nome escolhido (Bora)", "any": ["bora"]}
+      ]
+    },
+    {
+      "id": "sel-sqlite",
+      "kind": "selecao",
+      "messages": [
+        {"role": "user", "content": "Quais são duas formas de guardar os dados de um app pequeno?"},
+        {"role": "assistant", "content": "A) Um arquivo JSON local, simples e sem servidor. B) Um banco SQLite, que permite consultas e cresce melhor."},
+        {"role": "user", "content": "Vou de B. Como eu começo?"}
+      ],
+      "checks": [
+        {"name": "fala de SQLite", "any": ["sqlite*"]},
+        {"name": "dá um primeiro passo concreto", "any": ["tabela*", "create table", "conexao", "instal*", "importar", "crie", "criar", "banco"]}
+      ]
+    },
+    {
+      "id": "sel-ultimo-titulo",
+      "kind": "selecao",
+      "messages": [
+        {"role": "user", "content": "Sugira três títulos para um post sobre produtividade."},
+        {"role": "assistant", "content": "1. Menos abas, mais foco\n2. O poder do primeiro passo\n3. Rotina que cabe na sua vida"},
+        {"role": "user", "content": "Fico com o último. Escreva uma abertura de três linhas."}
+      ],
+      "checks": [
+        {"name": "parte do título escolhido", "any": ["rotina*", "cabe na sua vida"]}
+      ]
+    },
+    {
+      "id": "corr-fahrenheit",
+      "kind": "correcao",
+      "min_chars": 8,
+      "messages": [
+        {"role": "user", "content": "Converta 100 graus Fahrenheit para Celsius."},
+        {"role": "assistant", "content": "100 °F equivalem a 37,8 °C."},
+        {"role": "user", "content": "Não, eu quis dizer 100 graus Celsius para Fahrenheit."}
+      ],
+      "checks": [
+        {"name": "faz a conversão no sentido corrigido (212 °F)", "any": ["212"]}
+      ]
+    },
+    {
+      "id": "corr-capital-australia",
+      "kind": "correcao",
+      "min_chars": 8,
+      "messages": [
+        {"role": "user", "content": "Qual é a capital da Austrália? Responde rápido."},
+        {"role": "assistant", "content": "Sydney."},
+        {"role": "user", "content": "Tem certeza? Acho que você errou."}
+      ],
+      "checks": [
+        {"name": "corrige para Camberra", "any": ["canberra", "camberra"]}
+      ]
+    },
+    {
+      "id": "cont-viagem-salvador",
+      "kind": "continuidade",
+      "messages": [
+        {"role": "user", "content": "Estou planejando uma viagem para Salvador em dezembro."},
+        {"role": "assistant", "content": "Que ótimo! Dezembro é alta temporada e faz calor. Quantos dias você pretende ficar?"},
+        {"role": "user", "content": "Cinco dias."},
+        {"role": "assistant", "content": "Perfeito. Quer um roteiro mais voltado para praia, história ou comida?"},
+        {"role": "user", "content": "Uma mistura de história e comida."}
+      ],
+      "checks": [
+        {"name": "usa lugares ou pratos de Salvador", "any": ["pelourinho", "centro historico", "acaraje*", "moqueca*", "mercado modelo", "baiana*", "bahia"]},
+        {"name": "organiza no período combinado", "any": ["dia 1", "dia 2", "primeiro dia", "cinco dias", "5 dias", "roteiro*"]}
+      ]
+    },
+    {
+      "id": "cont-sem-javascript",
+      "kind": "continuidade",
+      "messages": [
+        {"role": "user", "content": "Vou te contar o projeto: um site de reservas para uma barbearia. Só pode usar HTML e CSS, sem JavaScript."},
+        {"role": "assistant", "content": "Entendido: site de reservas da barbearia, apenas com HTML e CSS."},
+        {"role": "user", "content": "Quais páginas ele precisa ter?"},
+        {"role": "assistant", "content": "Início, serviços, preços, contato e uma página de reserva."},
+        {"role": "user", "content": "Como faço a página de reserva funcionar?"}
+      ],
+      "checks": [
+        {"name": "propõe solução compatível com HTML e CSS", "any": ["formulario*", "<form", "mailto", "whatsapp", "link*", "telefone*", "e-mail", "email"]}
+      ],
+      "forbidden": ["addEventListener", "fetch(", "document.getElementById", "<script"]
+    },
+    {
+      "id": "troca-capital-franca",
+      "kind": "troca_de_assunto",
+      "messages": [
+        {"role": "user", "content": "Explique recursão em programação."},
+        {"role": "assistant", "content": "Recursão é quando uma função chama a si mesma para resolver partes menores do mesmo problema, sempre com uma condição de parada."},
+        {"role": "user", "content": "Mudando de assunto: qual é a capital da França?"}
+      ],
+      "checks": [
+        {"name": "responde Paris", "any": ["paris"]}
+      ],
+      "forbidden": ["recurs*"]
+    },
+    {
+      "id": "troca-esquece-isso",
+      "kind": "troca_de_assunto",
+      "max_chars": 400,
+      "messages": [
+        {"role": "user", "content": "Me ajuda a escolher entre React e Vue?"},
+        {"role": "assistant", "content": "Claro. React tem um ecossistema enorme; Vue é mais simples para começar. O que você vai construir?"},
+        {"role": "user", "content": "Esquece isso. Escreva uma frase motivacional curta."}
+      ],
+      "checks": [
+        {"name": "entrega uma frase motivacional", "any": ["voce", "passo*", "sonho*", "acredit*", "persist*", "coragem", "hoje", "forca", "vai"]}
+      ],
+      "forbidden": ["react", "vue"]
+    },
+    {
+      "id": "ambiguo-combinado",
+      "kind": "ambiguo",
+      "messages": [
+        {"role": "user", "content": "Oi!"},
+        {"role": "assistant", "content": "Olá! Como posso ajudar?"},
+        {"role": "user", "content": "Faz aquilo que a gente combinou."}
+      ],
+      "checks": [
+        {"name": "não inventa: admite não saber ou pergunta", "any": ["nao sei", "nao tenho", "nao encontrei", "nao lembro", "qual", "poderia", "pode me lembrar", "o que combinamos", "combinamos", "esclarecer"]}
+      ]
+    }
+  ]
+}
